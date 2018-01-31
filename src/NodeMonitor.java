@@ -6,13 +6,12 @@ import java.io.IOException;
 import java.util.*;
 
 
-public class NodeMonitor {
+public class NodeMonitor implements Monitor {
     private ArrayList<String[]> log;
     private Map<Node, String> nodeStatus;
 
     private final String FOUND = "FOUND", LOST = "LOST", HELLO = "HELLO";
     private final String ALIVE = "ALIVE", DEAD = "DEAD", UNKNOWN = "UNKNOWN";
-
 
     public NodeMonitor(String fileName) {
         nodeStatus = new HashMap<>();
@@ -74,53 +73,89 @@ public class NodeMonitor {
                 else {
                     node2 = getNode(logLine[4]);
                 }
-                node2.addHistory(logLine);
+                Notification notification =
+                        new Notification(Long.parseLong(logLine[1]), Long.parseLong(logLine[0]), node1, logLine[3], node2);
+
+                node1.addHistory(notification);
+                node2.addHistory(notification);
             }
-            node1.addHistory(logLine);
+            else
+            {
+                Notification notification =
+                        new Notification(Long.parseLong(logLine[1]), Long.parseLong(logLine[0]), node1, logLine[3]);
+                node1.addHistory(notification);
+            }
         }
         updateStatus();
     }
 
     /**
      * Updates the status of each node in system based on log data in the nodes' history.
+     * Lots of duplicate code?
      */
     private void updateStatus() {
         for (Node node : nodeStatus.keySet()) {
-            List<String[]> nodeHistory = node.getHistory();
+            List<Notification> nodeHistory = node.getHistory();
 
             for (int i=0; i < nodeHistory.size(); i++) {
-                String[] logLine = nodeHistory.get(i);
-                long broadcastTime = Long.parseLong(logLine[1]);
+                Notification notification = nodeHistory.get(i);
+                long broadcastTime = notification.getSentTime();
 
-                // Node HELLO means node is ALIVE
-                if (logLine[3].equals(HELLO) && broadcastTime > node.getLastStatusUpdate()) {
-                    node.statusUpdate(i, logLine[0] + " " + logLine[2] + " " + logLine[3]);
-                    nodeStatus.put(node, ALIVE);
-                }
-
-                if (logLine[3].equals(FOUND)) {
-                    Node node2 = getNode(logLine[4]);
-
-                    // If node1 FOUND node2, both node1 and node2 are ALIVE
-                    if (broadcastTime > node.getLastStatusUpdate()) {
-                        node.statusUpdate(broadcastTime, logLine[0] + " " + logLine[2] + " " + logLine[3] + " " + logLine[4]);
+                // Node HELLO means Node is alive
+                if (notification.getMessage().equals(HELLO)) {
+                    if (node.getLastStatusUpdate() == null) {
+                        node.statusUpdate(notification);
                         nodeStatus.put(node, ALIVE);
                     }
-                    if (broadcastTime > node2.getLastStatusUpdate()) {
-                        node2.statusUpdate(broadcastTime, logLine[0] + " " + logLine[2] + " " + logLine[3] + " " + logLine[4]);
+                    else if (broadcastTime > node.getLastStatusUpdate().getSentTime()) {
+                        node.statusUpdate(notification);
+                        nodeStatus.put(node, ALIVE);
+                    }
+                }
+
+                // Node1 FOUND Node2 means both Node1 and Node2 are ALIVE
+                if (notification.getMessage().equals(FOUND)) {
+                    Node node2 = notification.getNode2();
+
+                    if (node.getLastStatusUpdate() == null) {
+                        node.statusUpdate(notification);
+                        nodeStatus.put(node, ALIVE);
+                    }
+                    else if(broadcastTime > node.getLastStatusUpdate().getSentTime()) {
+                        node.statusUpdate(notification);
+                        nodeStatus.put(node, ALIVE);
+                    }
+
+                    if (node2.getLastStatusUpdate() == null) {
+                        node2.statusUpdate(notification);
+                        nodeStatus.put(node2, ALIVE);
+                    }
+                    else if(broadcastTime > node2.getLastStatusUpdate().getSentTime()) {
+                        node.statusUpdate(notification);
                         nodeStatus.put(node2, ALIVE);
                     }
                 }
 
                 // node1 LOST node2 means node1 is ALIVE and node2 is DEAD
-                if (logLine[3].equals(LOST)) {
-                    Node node2 = getNode(logLine[4]);
-                    if (broadcastTime > node.getLastStatusUpdate()) {
-                        node.statusUpdate(broadcastTime, logLine[0] + " " + logLine[2] + " " + logLine[3] + " " + logLine[4]);
+                if (notification.getMessage().equals(LOST)) {
+                    Node node2 = notification.getNode2();
+
+                    if (node.getLastStatusUpdate() == null) {
+                        node.statusUpdate(notification);
                         nodeStatus.put(node, ALIVE);
                     }
-                    if (broadcastTime > node2.getLastStatusUpdate()) {
-                        node2.statusUpdate(broadcastTime, logLine[0] + " " + logLine[2] + " " + logLine[3] + " " + logLine[4]);
+                    else if (broadcastTime > node.getLastStatusUpdate().getSentTime()) {
+                        node.statusUpdate(notification);
+                        nodeStatus.put(node, ALIVE);
+                    }
+
+
+                    if (node2.getLastStatusUpdate() == null) {
+                        node2.statusUpdate(notification);
+                        nodeStatus.put(node2, DEAD);
+                    }
+                    else if(broadcastTime > node2.getLastStatusUpdate().getSentTime()) {
+                        node2.statusUpdate(notification);
                         nodeStatus.put(node2, DEAD);
                     }
                 }
@@ -131,7 +166,17 @@ public class NodeMonitor {
 
     public void displayNodeStatus() {
         for (Node node : nodeStatus.keySet()) {
-            System.out.println(node.getName() + " " + nodeStatus.get(node) + " " + node.getLastUpdateDetails());
+            Notification lastUpdate = node.getLastStatusUpdate();
+            if (lastUpdate.getNode2() == null) {
+                System.out.println(node.getName() + " " + nodeStatus.get(node) + " " + lastUpdate.getReceivedTime() +
+                        " " + lastUpdate.getNode1().getName() + " " + lastUpdate.getMessage());
+            }
+            else
+            {
+                System.out.println(node.getName() + " " + nodeStatus.get(node) + " " + lastUpdate.getReceivedTime() +
+                        " " + lastUpdate.getNode1().getName() + " " + lastUpdate.getMessage()
+                        + " " + lastUpdate.getNode2().getName());
+            }
         }
     }
 
