@@ -5,6 +5,8 @@ public class Node {
     private String name;
     private ArrayList<String[]> history;
     private long lastStatusUpdate;
+
+    // lastUpdateDetails is hard coded string - should be improved. (works for now)
     private String lastUpdateDetails;
 
     public Node(String nodeName) {
